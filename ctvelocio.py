@@ -1,3 +1,22 @@
+#!/usr/bin/env python
+
+# Copyright 2017 Justin Searle
+#
+# Based on code from https://github.com/jsr5194/velocio-ace-remote and used with permission
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 import sys
 import time
 import serial
@@ -15,12 +34,12 @@ def print_help():
 	print ""
 	print "********************************************************************************"
 	print "*                                                                              *"
-	print "*                             velocio_ace_remote.py                            *"
+	print "*                             Control Things Velocio                           *"
 	print "*                                 version 1.0.1                                *"  
 	print "*                                                                              *"
 	print "********************************************************************************"
 	print ""
-	print " Usage: python velocio_ace_remote.py [instruction]"
+	print " Usage: python ctvelocio [instruction]"
 	print ""
 	print " Control Instructions:"
 	print " \tplay \t\t\tstart the routine at current position"
@@ -55,9 +74,9 @@ def print_help():
 	print " \tstep_over\t\tstandard procedure"
 	print ""
 	print ""
-	print " Example:\tpython velocio_ace_remote.py play"
-	print " Example:\tpython velocio_ace_remote.py read_output_bits"
-	print " Example:\tpython velocio_ace_remote.py exit_debug"
+	print " Example:\tpython ctvelocio play"
+	print " Example:\tpython ctvelocio read_output_bits"
+	print " Example:\tpython ctvelocio exit_debug"
 	print ""
 	print ""
 	exit(1)
