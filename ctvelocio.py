@@ -21,15 +21,10 @@ import re
 import sys
 import time
 import serial
+import getopt
 
-# define serial connection
-ser = serial.Serial(
-    port='/dev/ttyACM0',
-    baudrate=9600,
-    parity=serial.PARITY_NONE,
-    stopbits=serial.STOPBITS_ONE,
-    bytesize=serial.EIGHTBITS
-)
+
+printoutmode = 'normal'
 
 
 def print_help():
@@ -44,6 +39,7 @@ def print_help():
     print " Usage: python ctvelocio [instruction]"
     print ""
     print " Control Instructions:"
+    print ""
     print " \tplay \t\t\tstart the routine at current position"
     print " \tpause\t\t\tpause the routine at current position"
     print " \treset\t\t\treset the routine to the beginning"
@@ -81,30 +77,41 @@ def print_help():
     print ""
     print " Sending RAW messages:"
     print ""
-    print " \t--raw XX YY ZZ\t\tsends [XX, YY, ZZ]"
-    print " \t--raw XX [00,04]\tsends with range substitution [XX 00], [XX, 01], [XX, ...]"
+    print " \t--raw <Raw hex data>\tsends raw data to the port. Can handle ranges in input in the form [<start>,<end>]"
+    print ""
+    print ""
+    print " Change the way the responses are showed:"
+    print ""
+    print " \t--display=<mode>\tRecognized modes are ('normal', 'raw' and 'mixed')"
+    print ""
     print ""
     print " Example:\tpython ctvelocio play"
     print " Example:\tpython ctvelocio read_output_bits"
     print " Example:\tpython ctvelocio exit_debug"
-    print ""
+    print " Example:\tpython ctvelocio --raw 56 ff ff 00 08 0a 00 [07,0c]"
+    print " Example:\tpython ctvelocio --display=mixed --raw 56 ff ff 00 08 0a 00 [01,06]"
+    print " Example:\tpython ctvelocio exit_debug"
     print ""
     exit(1)
 
 
 def raw_to_instruction(raw):
     raw_str = ''.join(raw)
-    number_range = '\\[([0-9a-fA-F]{2}),([0-9a-fA-F]{2})\\]'
+    number_range = '\\[([0-9a-fA-F]{2})[,\\-]([0-9a-fA-F]{2})\\]'
     matches = re.search(number_range, raw_str)
     if matches:
         limits = [ord(x.decode('hex')) for x in matches.groups()]
         values = []
         for index in range(limits[0], limits[1] + 1):
-            raw_gen = re.sub(number_range, str.format('{:02x}', index), raw_str, 1)
+            raw_gen = re.sub(number_range, as_hex_chars(index), raw_str, 1)
             for mod_msg in raw_to_instruction(raw_gen):
                 values.append(mod_msg)
         return values
     return [raw_str.decode('hex')]
+
+
+def as_hex_chars(charcode):
+    return str.format('{:02x}', charcode)
 
 
 def as_normal_chars(charcode):
@@ -115,20 +122,38 @@ def as_normal_chars(charcode):
 
 def as_mixed_chars(charcode):
     if (64 < charcode < 123) or (58 > charcode > 47):
-        return '\033[92m ' + chr(charcode) + '\033[0m'
+        return '\033[92m {0}\033[0m'.format(chr(charcode))
     if charcode == 32:
         return ' _'
     if charcode == ord('.'):
         return ' .'
     if charcode == 255:
-        return str.format('\033[2m{:02x}\033[0m', charcode)
-    return str.format('{:02x}', charcode)
+        return '\033[2m{0}\033[0m'.format(as_hex_chars(charcode))
+    return as_hex_chars(charcode)
+
+
+def print_message(tx, rx):
+
+    if 'mixed' == printoutmode:
+        tx_hex = ' '.join(map(as_hex_chars, tx))
+        rx_mix = ' '.join(map(as_mixed_chars, rx))
+        print '\033[1mtx:\033[0m %s \033[1mrx:\033[0m %s' % (tx_hex, rx_mix)
+
+    elif 'raw' == printoutmode:
+        print ''.join(map(chr, rx))
+
+    else:
+        tx_hex = ' '.join(map(as_hex_chars, tx))
+        rx_hex = ' '.join(map(as_hex_chars, rx))
+        rx_str = ''.join(map(as_normal_chars, rx))
+        print '\033[1mtx:\033[0m %s \033[1mrx:\033[0m %s %s' % (tx_hex, rx_hex, rx_str)
 
 
 # sends a set of instructions to the connected device
 # @param instruction_set : an array of commands to send to the PLC in hex
 # @param printstring     : runtime message for the user
-def send_instruction(instruction_set, printstring):
+def send_instruction(ser, instruction_set, printstring):
+
     # clear out any leftover data
     if ser.inWaiting() > 0:
         ser.flushInput()
@@ -138,9 +163,6 @@ def send_instruction(instruction_set, printstring):
 
     # perform the write
     for instruction in instruction_set:
-        tx_raw = [ord(elem) for elem in instruction]
-        tx_hex = ' '.join(str.format('{:02x}', x) for x in tx_raw)
-
         ser.write(instruction)
         time.sleep(0.1)
 
@@ -148,40 +170,60 @@ def send_instruction(instruction_set, printstring):
         while ser.inWaiting() > 0:
             rx_raw.append(ord(ser.read()))
 
-        rx_hex = ' '.join(str.format('{:02x}', x) for x in rx_raw)
-        rx_str = ''.join(map(as_normal_chars, rx_raw))
-        rx_mix = ' '.join(map(as_mixed_chars, rx_raw))
-
         time.sleep(0.1)
 
-        print "\033[1mtx:\033[0m %s \033[1mrx:\033[0m %s" % (tx_hex, rx_mix)
+        tx_raw = [ord(elem) for elem in instruction]
+        print_message(tx_raw, rx_raw)
 
 
 def main():
-    # handle input errors
-    if len(sys.argv) == 1:
-        print_help()
 
-    # get cmd line arg
-    param = sys.argv[1]
-
-    # check for help request
-    if param == "-h" or param == "--help":
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "h", ["raw", "display="])
+    except getopt.GetoptError:
         print_help()
+        sys.exit(2)
+
+    command = []
+
+    command_type = ''
+
+    for opt, arg in opts:
+
+        if opt == '-h':
+            print_help()
+            sys.exit()
+
+        elif opt == '--display':
+            global printoutmode
+            printoutmode = arg
+
+        elif opt == '--raw':
+            command_type = 'raw'
+            command = raw_to_instruction(args)
+
+    if len(command) == 0:
+        if len(args) == 1 and args[0] in commands.keys():
+            command_type = args[0]
+            command = commands[args[0]]
+        else:
+            print_help()
+            sys.exit()
+
+    # define serial connection
+    ser = serial.Serial(
+        port='/dev/ttyACM0',
+        baudrate=9600,
+        parity=serial.PARITY_NONE,
+        stopbits=serial.STOPBITS_ONE,
+        bytesize=serial.EIGHTBITS
+    )
 
     # initiate the connection
     ser.isOpen()
 
-    # process the instruction
-    if commands.has_key(param):
-        send_instruction(commands[param], param)
-
-    # raw messages
-    elif param == "--raw" and len(sys.argv) > 1:
-        send_instruction(sys.argv[2:], "raw")
-
-    else:
-        print_help()
+    # send messages
+    send_instruction(ser, command, command_type)
 
     # clean up
     ser.close()
