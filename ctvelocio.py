@@ -152,14 +152,11 @@ def print_message(tx, rx):
 # sends a set of instructions to the connected device
 # @param instruction_set : an array of commands to send to the PLC in hex
 # @param printstring     : runtime message for the user
-def send_instruction(ser, instruction_set, printstring):
+def send_instruction(ser, instruction_set):
 
     # clear out any leftover data
     if ser.inWaiting() > 0:
         ser.flushInput()
-
-    if printstring == "raw":
-        instruction_set = raw_to_instruction(instruction_set)
 
     # perform the write
     for instruction in instruction_set:
@@ -186,8 +183,6 @@ def main():
 
     command = []
 
-    command_type = ''
-
     for opt, arg in opts:
 
         if opt == '-h':
@@ -199,12 +194,10 @@ def main():
             printoutmode = arg
 
         elif opt == '--raw':
-            command_type = 'raw'
             command = raw_to_instruction(args)
 
     if len(command) == 0:
         if len(args) == 1 and args[0] in commands.keys():
-            command_type = args[0]
             command = commands[args[0]]
         else:
             print_help()
@@ -223,7 +216,7 @@ def main():
     ser.isOpen()
 
     # send messages
-    send_instruction(ser, command, command_type)
+    send_instruction(ser, command)
 
     # clean up
     ser.close()
